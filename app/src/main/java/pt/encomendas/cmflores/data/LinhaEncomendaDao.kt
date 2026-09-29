@@ -20,4 +20,13 @@ interface LinhaEncomendaDao {
 
     @Delete
     suspend fun eliminar(linha: LinhaEncomenda)
+
+    // ---------------------------------------------------------
+    // ACRESCENTADO PARA OS RELATÓRIOS
+    // ---------------------------------------------------------
+
+    // Obtém todas as linhas de artigos pertencentes a encomendas cuja data de recolha
+    // se encontra no intervalo selecionado no calendário.
+    @Query("SELECT * FROM linhas_encomenda WHERE encomendaId IN (SELECT id FROM encomendas WHERE dataRecolha >= :dataInicio AND dataRecolha <= :dataFim)")
+    suspend fun obterLinhasPorDataRecolha(dataInicio: String, dataFim: String): List<LinhaEncomenda>
 }

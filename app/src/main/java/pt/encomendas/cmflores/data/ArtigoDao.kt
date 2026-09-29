@@ -26,5 +26,16 @@ interface ArtigoDao {
 
     @Delete
     suspend fun eliminar(artigo: Artigo)
-}
 
+    // ---------------------------------------------------------
+    // ACRESCENTADO PARA O DASHBOARD
+    // ---------------------------------------------------------
+
+    // Conta quantos artigos não têm foto (ou onde o campo está vazio)
+    @Query("SELECT COUNT(*) FROM artigos WHERE foto IS NULL OR TRIM(foto) = ''")
+    suspend fun contarSemFoto(): Int
+
+    // Conta o total geral de artigos no catálogo
+    @Query("SELECT COUNT(*) FROM artigos")
+    suspend fun contarTotal(): Int
+}

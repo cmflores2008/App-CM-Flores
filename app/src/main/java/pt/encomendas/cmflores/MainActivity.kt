@@ -28,31 +28,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pt.encomendas.cmflores.ui.ArtigosScreen
 import pt.encomendas.cmflores.ui.ClientesScreen
+import pt.encomendas.cmflores.ui.DashboardScreen
+import pt.encomendas.cmflores.importacao.ImportacaoArtigosScreen
 import pt.encomendas.cmflores.ui.EncomendaDetalheScreen
 import pt.encomendas.cmflores.ui.EncomendaEditarScreen
 import pt.encomendas.cmflores.ui.EncomendaFormScreen
 import pt.encomendas.cmflores.ui.EncomendasScreen
+import pt.encomendas.cmflores.ui.RelatorioDatasScreen
+import pt.encomendas.cmflores.ui.ConfiguracoesScreen
+import pt.encomendas.cmflores.ui.DadosLojaScreen
 import pt.encomendas.cmflores.ui.theme.EncomendasDeFloresTheme
 
 class MainActivity : ComponentActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
-
         super.onCreate(savedInstanceState)
-
         setContent {
-
             EncomendasDeFloresTheme {
-
                 Surface(
-                    modifier =
-                        Modifier.fillMaxSize(),
-                    color =
-                        MaterialTheme
-                            .colorScheme
-                            .background
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
                 ) {
-
                     EcranPrincipal()
                 }
             }
@@ -64,332 +59,173 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun EcranPrincipal() {
 
-    var mostrarArtigos by remember {
-        mutableStateOf(false)
-    }
+    var mostrarArtigos by remember { mutableStateOf(false) }
+    var mostrarClientes by remember { mutableStateOf(false) }
+    var mostrarEncomendas by remember { mutableStateOf(false) }
+    var mostrarNovaEncomenda by remember { mutableStateOf(false) }
+    var mostrarDashboard by remember { mutableStateOf(false) }
+    var mostrarImportacao by remember { mutableStateOf(false) }
+    var mostrarConfiguracoes by remember { mutableStateOf(false) }
+    var mostrarDadosLoja by remember { mutableStateOf(false) } // <-- Variável para o novo ecrã
 
-    var mostrarClientes by remember {
-        mutableStateOf(false)
-    }
+    var mostrarRelatorioDatas by remember { mutableStateOf(false) }
+    var dataInicioRel by remember { mutableStateOf("") }
+    var dataFimRel by remember { mutableStateOf("") }
 
-    var mostrarEncomendas by remember {
-        mutableStateOf(false)
-    }
+    var encomendaSelecionadaId by remember { mutableStateOf<Long?>(null) }
+    var encomendaEmEdicaoId by remember { mutableStateOf<Long?>(null) }
 
-    var mostrarNovaEncomenda by remember {
-        mutableStateOf(false)
-    }
-
-    var encomendaSelecionadaId by remember {
-        mutableStateOf<Long?>(null)
-    }
-
-    var encomendaEmEdicaoId by remember {
-        mutableStateOf<Long?>(null)
-    }
-
-    // ---------------------------------------------------------
-    // EDIÇÃO DE ENCOMENDA
-    // ---------------------------------------------------------
     if (encomendaEmEdicaoId != null) {
-
         EncomendaEditarScreen(
-
-            encomendaId =
-                encomendaEmEdicaoId!!,
-
+            encomendaId = encomendaEmEdicaoId!!,
             onVoltar = {
-
-                encomendaEmEdicaoId =
-                    null
-
-                mostrarEncomendas =
-                    true
+                encomendaEmEdicaoId = null
+                mostrarEncomendas = true
             },
-
             onGuardada = {
-
-                encomendaSelecionadaId =
-                    encomendaEmEdicaoId
-
-                encomendaEmEdicaoId =
-                    null
+                encomendaSelecionadaId = encomendaEmEdicaoId
+                encomendaEmEdicaoId = null
             }
         )
-
-        // ---------------------------------------------------------
-        // DETALHE DA ENCOMENDA
-        // ---------------------------------------------------------
     } else if (encomendaSelecionadaId != null) {
-
         EncomendaDetalheScreen(
-
-            encomendaId =
-                encomendaSelecionadaId!!,
-
+            encomendaId = encomendaSelecionadaId!!,
             onVoltar = {
-
-                encomendaSelecionadaId =
-                    null
-
-                mostrarEncomendas =
-                    true
+                encomendaSelecionadaId = null
+                mostrarEncomendas = true
             },
-
             onEditar = {
-
-                encomendaEmEdicaoId =
-                    encomendaSelecionadaId
-
-                encomendaSelecionadaId =
-                    null
+                encomendaEmEdicaoId = encomendaSelecionadaId
+                encomendaSelecionadaId = null
             }
         )
-
-        // ---------------------------------------------------------
-        // NOVA ENCOMENDA
-        // ---------------------------------------------------------
     } else if (mostrarNovaEncomenda) {
-
         EncomendaFormScreen(
-
-            onVoltar = {
-                mostrarNovaEncomenda =
-                    false
-            },
-
+            onVoltar = { mostrarNovaEncomenda = false },
             onGuardada = {
-
-                mostrarNovaEncomenda =
-                    false
-
-                mostrarEncomendas =
-                    true
+                mostrarNovaEncomenda = false
+                mostrarEncomendas = true
             }
         )
-
-        // ---------------------------------------------------------
-        // LISTA DE ENCOMENDAS
-        // ---------------------------------------------------------
     } else if (mostrarEncomendas) {
-
         EncomendasScreen(
-
-            onVoltar = {
-                mostrarEncomendas =
-                    false
-            },
-
+            onVoltar = { mostrarEncomendas = false },
             onNovaEncomenda = {
-
-                mostrarEncomendas =
-                    false
-
-                mostrarNovaEncomenda =
-                    true
+                mostrarEncomendas = false
+                mostrarNovaEncomenda = true
             },
-
             onAbrirEncomenda = { id ->
-
-                encomendaSelecionadaId =
-                    id
-
-                mostrarEncomendas =
-                    false
+                encomendaSelecionadaId = id
+                mostrarEncomendas = false
             }
         )
-
-        // ---------------------------------------------------------
-        // CLIENTES
-        // ---------------------------------------------------------
     } else if (mostrarClientes) {
-
         ClientesScreen(
-
-            onVoltar = {
-                mostrarClientes =
-                    false
-            }
+            onVoltar = { mostrarClientes = false }
         )
-
-        // ---------------------------------------------------------
-        // ARTIGOS
-        // ---------------------------------------------------------
     } else if (mostrarArtigos) {
-
         ArtigosScreen(
-
+            onVoltar = { mostrarArtigos = false }
+        )
+    } else if (mostrarRelatorioDatas) {
+        RelatorioDatasScreen(
+            dataInicio = dataInicioRel,
+            dataFim = dataFimRel,
             onVoltar = {
-                mostrarArtigos =
-                    false
+                mostrarRelatorioDatas = false
+                mostrarDashboard = true
             }
         )
-
-        // ---------------------------------------------------------
-        // MENU PRINCIPAL
-        // ---------------------------------------------------------
-    } else {
-
-        Column(
-
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
-
-            horizontalAlignment =
-                Alignment.CenterHorizontally,
-
-            verticalArrangement =
-                Arrangement.Top
-        ) {
-
-            Spacer(
-                modifier =
-                    Modifier.height(30.dp)
-            )
-
-            Text(
-                text = "🌸",
-                fontSize = 50.sp
-            )
-
-            Spacer(
-                modifier =
-                    Modifier.height(10.dp)
-            )
-
-            Text(
-                text =
-                    "ENCOMENDAS DE FLORES",
-                fontSize = 24.sp,
-                fontWeight =
-                    FontWeight.Bold
-            )
-
-            Text(
-                text =
-                    "Carlos Melo - Comércio de flores, Lda.",
-                fontSize = 14.sp
-            )
-
-            Spacer(
-                modifier =
-                    Modifier.height(25.dp)
-            )
-
-            BotaoMenu(
-                texto =
-                    "🌷  Nova Encomenda",
-                onClick = {
-                    mostrarNovaEncomenda =
-                        true
-                }
-            )
-
-            Spacer(
-                modifier =
-                    Modifier.height(12.dp)
-            )
-
-            BotaoMenu(
-                texto =
-                    "📋  Encomendas",
-                onClick = {
-                    mostrarEncomendas =
-                        true
-                }
-            )
-
-            Spacer(
-                modifier =
-                    Modifier.height(12.dp)
-            )
-
-            Row(
-
-                modifier =
-                    Modifier.fillMaxWidth(),
-
-                horizontalArrangement =
-                    Arrangement.spacedBy(12.dp)
-            ) {
-
-                BotaoMenu(
-                    texto =
-                        "👥  Clientes",
-
-                    modifier =
-                        Modifier.weight(1f),
-
-                    onClick = {
-                        mostrarClientes =
-                            true
-                    }
-                )
-
-                BotaoMenu(
-                    texto =
-                        "🌹  Artigos",
-
-                    modifier =
-                        Modifier.weight(1f),
-
-                    onClick = {
-                        mostrarArtigos =
-                            true
-                    }
-                )
+    } else if (mostrarImportacao) {
+        ImportacaoArtigosScreen(
+            onVoltar = { mostrarImportacao = false }
+        )
+    } else if (mostrarDashboard) {
+        DashboardScreen(
+            onVoltar = { mostrarDashboard = false },
+            onNavigateToEncomendas = {
+                mostrarDashboard = false
+                mostrarNovaEncomenda = true
+            },
+            onNavigateToClientes = {
+                mostrarDashboard = false
+                mostrarClientes = true
+            },
+            onNavigateToArtigos = {
+                mostrarDashboard = false
+                mostrarArtigos = true
+            },
+            onNavigateToImportacao = {
+                mostrarDashboard = false
+                mostrarImportacao = true
+            },
+            onNavigateToPesquisaDatas = { inicio, fim ->
+                dataInicioRel = inicio
+                dataFimRel = fim
+                mostrarDashboard = false
+                mostrarRelatorioDatas = true
             }
+        )
+        // ---------------------------------------------------------
+        // DADOS DA LOJA
+        // ---------------------------------------------------------
+    } else if (mostrarDadosLoja) {
+        DadosLojaScreen(
+            onVoltar = {
+                mostrarDadosLoja = false
+                mostrarConfiguracoes = true // Volta para as Configurações
+            }
+        )
+    } else if (mostrarConfiguracoes) {
+        ConfiguracoesScreen(
+            onVoltar = { mostrarConfiguracoes = false },
+            onAbrirDadosLoja = {
+                mostrarConfiguracoes = false
+                mostrarDadosLoja = true
+            }
+        )
+    } else {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Top
+        ) {
+            Spacer(modifier = Modifier.height(30.dp))
+            Text(text = "🌸", fontSize = 50.sp)
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(text = "ENCOMENDAS DE FLORES", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text(text = "Carlos Melo - Comércio de flores, Lda.", fontSize = 14.sp)
+            Spacer(modifier = Modifier.height(25.dp))
 
-            Spacer(
-                modifier =
-                    Modifier.height(12.dp)
-            )
-
-            BotaoMenu(
-                texto =
-                    "📊  Dashboard"
-            )
-
-            Spacer(
-                modifier =
-                    Modifier.height(12.dp)
-            )
-
-            BotaoMenu(
-                texto =
-                    "⚙️  Configurações"
-            )
+            BotaoMenu(texto = "🌷  Nova Encomenda", onClick = { mostrarNovaEncomenda = true })
+            Spacer(modifier = Modifier.height(12.dp))
+            BotaoMenu(texto = "📋  Encomendas", onClick = { mostrarEncomendas = true })
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                BotaoMenu(texto = "👥  Clientes", modifier = Modifier.weight(1f), onClick = { mostrarClientes = true })
+                BotaoMenu(texto = "🌹  Artigos", modifier = Modifier.weight(1f), onClick = { mostrarArtigos = true })
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            BotaoMenu(texto = "📊  Dashboard", onClick = { mostrarDashboard = true })
+            Spacer(modifier = Modifier.height(12.dp))
+            BotaoMenu(texto = "⚙️  Configurações", onClick = { mostrarConfiguracoes = true })
         }
     }
 }
 
 @Composable
 fun BotaoMenu(
-
     texto: String,
-
-    modifier: Modifier =
-        Modifier.fillMaxWidth(),
-
+    modifier: Modifier = Modifier.fillMaxWidth(),
     onClick: () -> Unit = {}
-
 ) {
-
     Button(
-
         onClick = onClick,
-
-        modifier =
-            modifier.height(55.dp)
-
+        modifier = modifier.height(55.dp)
     ) {
-
-        Text(
-            text = texto,
-            fontSize = 16.sp
-        )
+        Text(text = texto, fontSize = 16.sp)
     }
 }
-

@@ -50,7 +50,7 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation(libs.androidx.core.ktx)
-
+    implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)

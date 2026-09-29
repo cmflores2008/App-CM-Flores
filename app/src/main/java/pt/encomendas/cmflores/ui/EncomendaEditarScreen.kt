@@ -22,9 +22,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -39,6 +41,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +57,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import androidx.room.withTransaction
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import pt.encomendas.cmflores.data.Artigo
 import pt.encomendas.cmflores.data.Cliente
@@ -154,6 +159,9 @@ fun EncomendaEditarScreen(
     var mostrarDialogConfirmacao by remember { mutableStateOf(false) }
     var mostrarDialogWhatsApp by remember { mutableStateOf(false) }
 
+    var linhaParaRemover by remember { mutableStateOf<LinhaEncomendaEdicao?>(null) }
+    var mostrarDialogApagarEncomenda by remember { mutableStateOf(false) }
+
     LaunchedEffect(encomendaId) {
         clientes = baseDados.clienteDao().obterTodos()
         artigos = baseDados.artigoDao().obterTodos()
@@ -208,26 +216,24 @@ fun EncomendaEditarScreen(
 
         linhas = linhas + novaLinha
 
-        // Reset e Volta à pesquisa!
         artigoSelecionado = null
         quantidadeTexto = "1"
         precoUnitarioTexto = ""
         observacao = ""
         mostrarQuantidade = false
         pesquisaArtigo = ""
-        mostrarArtigos = true // Volta a abrir a pesquisa
+        mostrarArtigos = true
         mensagem = ""
     }
 
     fun iniciarEdicaoLinha(linha: LinhaEncomendaEdicao) {
         if (linha.artigo.codigo.startsWith("ARTIGO ") && linha.artigo.descricao == "Artigo não encontrado") {
-            mensagem = "⚠️ Este artigo já não existe na lista de artigos."
+            mensagem = "⚠️️ Este artigo já não existe na lista de artigos."
             return
         }
         linhaEmEdicao = linha
         artigoSelecionado = linha.artigo
 
-        // Transformar quantidade para string de forma limpa para edição
         quantidadeTexto = if (linha.quantidade % 1.0 == 0.0) linha.quantidade.toInt().toString() else linha.quantidade.toString()
         precoUnitarioTexto = String.format(Locale.getDefault(), "%.2f", linha.precoUnitario)
         observacao = linha.observacao
@@ -264,7 +270,6 @@ fun EncomendaEditarScreen(
         observacao = ""
         mostrarQuantidade = false
         mensagem = ""
-        // Na edição da linha não abrimos a pesquisa, voltamos ao ecrã normal
     }
 
     fun removerLinha(linhaParaRemover: LinhaEncomendaEdicao) {
@@ -331,6 +336,23 @@ fun EncomendaEditarScreen(
         }
     }
 
+    fun executarEliminacaoNaBD() {
+        val encomendaAtual = encomenda ?: return
+        coroutineScope.launch {
+            try {
+                baseDados.withTransaction {
+                    val linhasExistentes = baseDados.linhaEncomendaDao().obterPorEncomenda(encomendaId)
+                    linhasExistentes.forEach { baseDados.linhaEncomendaDao().eliminar(it) }
+                    baseDados.encomendaDao().eliminar(encomendaAtual)
+                }
+                mostrarDialogApagarEncomenda = false
+                onVoltar()
+            } catch (e: Exception) {
+                mensagem = "❌ Erro ao apagar encomenda: ${e.message}"
+            }
+        }
+    }
+
     val artigosFiltrados = artigos.filter { artigo ->
         if (!artigo.ativo) false else {
             val pesquisa = normalizarPesquisaArtigoEdicao(pesquisaArtigo.trim())
@@ -338,6 +360,43 @@ fun EncomendaEditarScreen(
                     normalizarPesquisaArtigoEdicao(artigo.descricao).contains(pesquisa) ||
                     normalizarPesquisaArtigoEdicao(artigo.categoria).contains(pesquisa)
         }
+    }
+
+    if (linhaParaRemover != null) {
+        AlertDialog(
+            onDismissRequest = { linhaParaRemover = null },
+            title = { Text("Atenção") },
+            text = { Text("Apaga esta linha?", fontSize = 18.sp) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        removerLinha(linhaParaRemover!!)
+                        linhaParaRemover = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("SIM") }
+            },
+            dismissButton = {
+                TextButton(onClick = { linhaParaRemover = null }) { Text("NÃO") }
+            }
+        )
+    }
+
+    if (mostrarDialogApagarEncomenda) {
+        AlertDialog(
+            onDismissRequest = { mostrarDialogApagarEncomenda = false },
+            title = { Text("Atenção") },
+            text = { Text("Deseja apagar a encomenda?", fontSize = 18.sp) },
+            confirmButton = {
+                Button(
+                    onClick = { executarEliminacaoNaBD() },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("SIM") }
+            },
+            dismissButton = {
+                TextButton(onClick = { mostrarDialogApagarEncomenda = false }) { Text("NÃO") }
+            }
+        )
     }
 
     if (mostrarDialogConfirmacao) {
@@ -444,7 +503,7 @@ fun EncomendaEditarScreen(
                                         if (linha.observacao.isNotBlank()) Text("Observação: " + linha.observacao)
                                         Text(text = "Total: € %.2f".format(linha.total), fontWeight = FontWeight.Bold)
                                     }
-                                    TextButton(onClick = { removerLinha(linha) }) { Text("✕", fontSize = 22.sp) }
+                                    TextButton(onClick = { linhaParaRemover = linha }) { Text("✕", fontSize = 22.sp, color = MaterialTheme.colorScheme.error) }
                                 }
                             }
                         }
@@ -465,8 +524,21 @@ fun EncomendaEditarScreen(
                         Text(text = "TOTAL", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Text(text = "€ %.2f".format(totalEncomenda), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     }
-                    Button(onClick = { validarParaGuardar() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("GUARDAR ALTERAÇÕES")
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { mostrarDialogApagarEncomenda = true },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text("APAGAR")
+                        }
+                        Button(
+                            onClick = { validarParaGuardar() },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("GUARDAR")
+                        }
                     }
                 }
             }
@@ -489,6 +561,13 @@ fun EncomendaEditarScreen(
     }
 
     if (mostrarArtigos) {
+        val focusRequester = remember { FocusRequester() }
+
+        LaunchedEffect(Unit) {
+            delay(100)
+            try { focusRequester.requestFocus() } catch (e: Exception) { }
+        }
+
         Dialog(onDismissRequest = { mostrarArtigos = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Card(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
@@ -497,8 +576,8 @@ fun EncomendaEditarScreen(
 
                     OutlinedTextField(
                         value = pesquisaArtigo,
-                        onValueChange = { pesquisaArtigo = it.uppercase() }, // MAIÚSCULAS AQUI
-                        modifier = Modifier.fillMaxWidth(),
+                        onValueChange = { pesquisaArtigo = it.uppercase() },
+                        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester), // <-- Aplicar foco aqui!
                         label = { Text("Pesquisar artigo") },
                         singleLine = true
                     )
@@ -557,7 +636,7 @@ fun EncomendaEditarScreen(
 
                     OutlinedTextField(
                         value = observacao,
-                        onValueChange = { observacao = it.uppercase(); mensagem = "" }, // MAIÚSCULAS AQUI
+                        onValueChange = { observacao = it.uppercase(); mensagem = "" },
                         label = { Text("Observação") },
                         modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4
                     )
@@ -571,7 +650,6 @@ fun EncomendaEditarScreen(
             dismissButton = {
                 TextButton(onClick = {
                     mostrarQuantidade = false; artigoSelecionado = null; linhaEmEdicao = null
-                    // Se cancelou a inserção de um artigo NOVO, volta à pesquisa. Se cancelou edição, não.
                     if (!modoEdicao) mostrarArtigos = true
                 }) { Text("CANCELAR") }
             }
@@ -717,7 +795,6 @@ private fun gerarPdfEPartilharWhatsAppEdicao(context: Context, numeroEnc: String
 
             paint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.NORMAL)
             paint.textSize = 9f
-
             paint.textAlign = android.graphics.Paint.Align.LEFT
             var desc = linha.artigo.descricao
             if (desc.length > 35) desc = desc.substring(0, 32) + "..."

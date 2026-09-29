@@ -2,6 +2,7 @@ package pt.encomendas.cmflores.ui
 
 import android.content.Context
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,8 +20,12 @@ import kotlinx.coroutines.launch
 import pt.encomendas.cmflores.data.DatabaseProvider
 import pt.encomendas.cmflores.data.Encomenda
 import pt.encomendas.cmflores.data.Cliente
+import pt.encomendas.cmflores.data.ExportacaoCobol
 import java.io.File
 import java.io.FileOutputStream
+import java.text.Normalizer
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 data class EncomendaComClienteLista(
@@ -37,6 +42,11 @@ data class LinhaPdfLista(
     val total: Double
 )
 
+private fun normalizarTexto(texto: String): String {
+    return Normalizer.normalize(texto.lowercase(Locale.getDefault()), Normalizer.Form.NFD)
+        .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EncomendasScreen(
@@ -50,11 +60,15 @@ fun EncomendasScreen(
 
     var listaEncomendas by remember { mutableStateOf<List<EncomendaComClienteLista>>(emptyList()) }
 
+    var pesquisaCliente by remember { mutableStateOf("") }
+    var apenasPendentesHoje by remember { mutableStateOf(false) }
+
+    val dataHoje = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date()) }
+
     LaunchedEffect(Unit) {
         val encomendasBD = db.encomendaDao().obterTodas()
         val clientesBD = db.clienteDao().obterTodos()
 
-        // Mapear cada encomenda com o cliente correspondente e organizar pelas mais recentes
         listaEncomendas = encomendasBD.map { enc ->
             EncomendaComClienteLista(
                 encomenda = enc,
@@ -63,10 +77,74 @@ fun EncomendasScreen(
         }.sortedByDescending { it.encomenda.id }
     }
 
-    fun partilharEncomendaViaWhatsAppLista(item: EncomendaComClienteLista) {
-        val clienteAEnviar = item.cliente
-        if (clienteAEnviar == null) return
+    val listaFiltrada = listaEncomendas.filter { item ->
+        val termoPesquisa = normalizarTexto(pesquisaCliente.trim())
+        val nomeNormalizado = normalizarTexto(item.cliente?.nome ?: "")
+        val numeroNormalizado = normalizarTexto(item.encomenda.numero)
 
+        val passaPesquisa = termoPesquisa.isEmpty() ||
+                nomeNormalizado.contains(termoPesquisa) ||
+                numeroNormalizado.contains(termoPesquisa)
+
+        val passaFiltroHoje = if (apenasPendentesHoje) {
+            item.encomenda.estado.equals("Pendente", ignoreCase = true) &&
+                    item.encomenda.dataRecolha == dataHoje
+        } else {
+            true
+        }
+
+        passaPesquisa && passaFiltroHoje
+    }
+
+    fun exportarListaVisivel() {
+        if (listaFiltrada.isEmpty()) {
+            Toast.makeText(context, "Não há encomendas para exportar.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        coroutineScope.launch {
+            try {
+                Toast.makeText(context, "A processar exportação...", Toast.LENGTH_SHORT).show()
+                val artigosBd = db.artigoDao().obterTodos()
+                val listaParaExportar = mutableListOf<ExportacaoCobol.DadosExportacao>()
+
+                listaFiltrada.forEach { item ->
+                    if (item.cliente != null) {
+                        val linhasEnc = db.linhaEncomendaDao().obterPorEncomenda(item.encomenda.id)
+                        listaParaExportar.add(
+                            ExportacaoCobol.DadosExportacao(item.encomenda, item.cliente, linhasEnc)
+                        )
+                    }
+                }
+
+                ExportacaoCobol.exportarEmLote(context, listaParaExportar, artigosBd)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(context, "Erro ao exportar: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun exportarEncomendaUnica(item: EncomendaComClienteLista) {
+        val clienteAExportar = item.cliente ?: return
+        coroutineScope.launch {
+            try {
+                Toast.makeText(context, "A preparar exportação...", Toast.LENGTH_SHORT).show()
+                val linhasEnc = db.linhaEncomendaDao().obterPorEncomenda(item.encomenda.id)
+                val artigosBd = db.artigoDao().obterTodos()
+
+                val dadosUnicos = ExportacaoCobol.DadosExportacao(item.encomenda, clienteAExportar, linhasEnc)
+                ExportacaoCobol.exportarEmLote(context, listOf(dadosUnicos), artigosBd)
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(context, "Erro: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun partilharEncomendaViaWhatsAppLista(item: EncomendaComClienteLista) {
+        val clienteAEnviar = item.cliente ?: return
         coroutineScope.launch {
             try {
                 val linhasBD = db.linhaEncomendaDao().obterPorEncomenda(item.encomenda.id)
@@ -81,15 +159,7 @@ fun EncomendasScreen(
                         total = linha.total
                     )
                 }
-
-                gerarPdfEPartilharWhatsAppLista(
-                    context = context,
-                    numeroEnc = item.encomenda.numero,
-                    cliente = clienteAEnviar,
-                    dataRecolha = item.encomenda.dataRecolha,
-                    linhas = linhasPdf,
-                    total = item.encomenda.total
-                )
+                gerarPdfEPartilharWhatsAppLista(context, item.encomenda.numero, clienteAEnviar, item.encomenda.dataRecolha, linhasPdf, item.encomenda.total)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -115,41 +185,95 @@ fun EncomendasScreen(
             )
         }
     ) { paddingValues ->
-        if (listaEncomendas.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
-                Text("Não existem encomendas registadas.")
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(paddingValues).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+        Column(
+            modifier = Modifier.fillMaxSize().padding(paddingValues)
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
-                items(listaEncomendas, key = { it.encomenda.id }) { item ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth().clickable { onAbrirEncomenda(item.encomenda.id) },
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                Column(modifier = Modifier.padding(16.dp)) {
+                    OutlinedTextField(
+                        value = pesquisaCliente,
+                        onValueChange = { pesquisaCliente = it },
+                        label = { Text("Pesquisar cliente ou número") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { apenasPendentesHoje = !apenasPendentesHoje }
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(text = item.encomenda.numero, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(text = "Cliente: ${item.cliente?.nome ?: "Desconhecido"}")
-                                Text(text = "Data Recolha: ${item.encomenda.dataRecolha}", color = MaterialTheme.colorScheme.secondary)
-                                Text(text = "Estado: ${item.encomenda.estado}")
-                                Text(
-                                    text = "Total: ${String.format(Locale.getDefault(), "%.2f €", item.encomenda.total)}",
-                                    color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold
-                                )
+                            Switch(checked = apenasPendentesHoje, onCheckedChange = { apenasPendentesHoje = it })
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Apenas Pendentes de Hoje", fontWeight = FontWeight.Bold)
+                                Text("Data: $dataHoje", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                             }
-                            // Botão WhatsApp
-                            IconButton(
-                                onClick = { partilharEncomendaViaWhatsAppLista(item) },
-                                modifier = Modifier.padding(start = 8.dp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = { exportarListaVisivel() },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                    ) {
+                        Text("📤 EXPORTAR ${listaFiltrada.size} ENCOMENDA(S)", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            if (listaFiltrada.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize().weight(1f), contentAlignment = Alignment.Center) {
+                    Text("Nenhuma encomenda encontrada.")
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(listaFiltrada, key = { it.encomenda.id }) { item ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth().clickable { onAbrirEncomenda(item.encomenda.id) }
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("📲", fontSize = 28.sp)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(text = item.encomenda.numero, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(text = "Cliente: ${item.cliente?.nome ?: "Desconhecido"}")
+                                    Text(text = "Data Recolha: ${item.encomenda.dataRecolha}", color = MaterialTheme.colorScheme.secondary)
+                                    Text(text = "Estado: ${item.encomenda.estado}")
+                                    Text(
+                                        text = "Total: ${String.format(Locale.getDefault(), "%.2f €", item.encomenda.total)}",
+                                        color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = { exportarEncomendaUnica(item) }
+                                ) {
+                                    Text("💾", fontSize = 24.sp)
+                                }
+
+                                IconButton(
+                                    onClick = { partilharEncomendaViaWhatsAppLista(item) },
+                                    modifier = Modifier.padding(start = 4.dp)
+                                ) {
+                                    Text("📲", fontSize = 28.sp)
+                                }
                             }
                         }
                     }
@@ -159,9 +283,6 @@ fun EncomendasScreen(
     }
 }
 
-// ------------------------------------------------------------------
-// GERADOR DE PDF PROFISSIONAL PARA A LISTAGEM DE ENCOMENDAS
-// ------------------------------------------------------------------
 private fun gerarPdfEPartilharWhatsAppLista(
     context: Context,
     numeroEnc: String,

@@ -22,9 +22,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -39,6 +41,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +57,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import androidx.room.withTransaction
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import pt.encomendas.cmflores.data.Artigo
 import pt.encomendas.cmflores.data.Cliente
@@ -151,6 +156,9 @@ fun EncomendaFormScreen(
     var mostrarDialogWhatsApp by remember { mutableStateOf(false) }
     var numeroEncomendaGerado by remember { mutableStateOf("") }
 
+    var linhaParaRemover by remember { mutableStateOf<LinhaEncomendaTemporaria?>(null) }
+    var mostrarDialogApagarEncomenda by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         clientes = baseDados.clienteDao().obterTodos()
         artigos = baseDados.artigoDao().obterTodos()
@@ -181,19 +189,18 @@ fun EncomendaFormScreen(
             observacao = observacao.trim()
         )
 
-        // Reset e Volta à Pesquisa!
         artigoSelecionado = null
         quantidadeTexto = "1"
         precoUnitarioTexto = ""
         observacao = ""
         mostrarQuantidade = false
         pesquisaArtigo = ""
-        mostrarArtigos = true // Abre logo a janela de artigos novamente
+        mostrarArtigos = true
         mensagem = ""
     }
 
-    fun removerLinha(linhaParaRemover: LinhaEncomendaTemporaria) {
-        val indice = linhas.indexOfFirst { it === linhaParaRemover }
+    fun removerLinha(linhaRemover: LinhaEncomendaTemporaria) {
+        val indice = linhas.indexOfFirst { it === linhaRemover }
         if (indice >= 0) {
             linhas = linhas.toMutableList().also { it.removeAt(indice) }
         }
@@ -276,6 +283,46 @@ fun EncomendaFormScreen(
         }
     }
 
+    if (linhaParaRemover != null) {
+        AlertDialog(
+            onDismissRequest = { linhaParaRemover = null },
+            title = { Text("Atenção") },
+            text = { Text("Apaga esta linha?", fontSize = 18.sp) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        removerLinha(linhaParaRemover!!)
+                        linhaParaRemover = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("SIM") }
+            },
+            dismissButton = {
+                TextButton(onClick = { linhaParaRemover = null }) { Text("NÃO") }
+            }
+        )
+    }
+
+    if (mostrarDialogApagarEncomenda) {
+        AlertDialog(
+            onDismissRequest = { mostrarDialogApagarEncomenda = false },
+            title = { Text("Atenção") },
+            text = { Text("Deseja apagar a encomenda?", fontSize = 18.sp) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        mostrarDialogApagarEncomenda = false
+                        onVoltar()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("SIM") }
+            },
+            dismissButton = {
+                TextButton(onClick = { mostrarDialogApagarEncomenda = false }) { Text("NÃO") }
+            }
+        )
+    }
+
     if (mostrarDialogConfirmacao) {
         AlertDialog(
             onDismissRequest = { mostrarDialogConfirmacao = false },
@@ -288,9 +335,7 @@ fun EncomendaFormScreen(
 
     if (mostrarDialogWhatsApp) {
         AlertDialog(
-            onDismissRequest = {
-                mostrarDialogWhatsApp = false; onGuardada()
-            },
+            onDismissRequest = { mostrarDialogWhatsApp = false; onGuardada() },
             title = { Text("Enviar documento") },
             text = { Text("Enviar documento pelo WhatsApp?", fontSize = 18.sp) },
             confirmButton = {
@@ -364,7 +409,7 @@ fun EncomendaFormScreen(
                                     if (linha.observacao.isNotBlank()) Text("Observação: " + linha.observacao)
                                     Text("Total: € %.2f".format(linha.total), fontWeight = FontWeight.Bold)
                                 }
-                                TextButton(onClick = { removerLinha(linha) }) { Text("✕", fontSize = 22.sp) }
+                                TextButton(onClick = { linhaParaRemover = linha }) { Text("✕", fontSize = 22.sp, color = MaterialTheme.colorScheme.error) }
                             }
                         }
                     }
@@ -384,8 +429,21 @@ fun EncomendaFormScreen(
                         Text(text = "TOTAL", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Text(text = "€ %.2f".format(totalEncomenda), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     }
-                    Button(onClick = { validarParaGuardar() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("GUARDAR ENCOMENDA")
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { mostrarDialogApagarEncomenda = true },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text("APAGAR")
+                        }
+                        Button(
+                            onClick = { validarParaGuardar() },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("GUARDAR")
+                        }
                     }
                 }
             }
@@ -408,6 +466,15 @@ fun EncomendaFormScreen(
     }
 
     if (mostrarArtigos) {
+        // Criar o FocusRequester
+        val focusRequester = remember { FocusRequester() }
+
+        // Assim que a janela abrir, aguarda um instante (para o ecrã desenhar) e pede o foco!
+        LaunchedEffect(Unit) {
+            delay(100)
+            try { focusRequester.requestFocus() } catch (e: Exception) { }
+        }
+
         Dialog(onDismissRequest = { mostrarArtigos = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Card(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
@@ -416,8 +483,8 @@ fun EncomendaFormScreen(
 
                     OutlinedTextField(
                         value = pesquisaArtigo,
-                        onValueChange = { pesquisaArtigo = it.uppercase() }, // MAIÚSCULAS AQUI
-                        modifier = Modifier.fillMaxWidth(),
+                        onValueChange = { pesquisaArtigo = it.uppercase() },
+                        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester), // <-- Aplicar o foco aqui!
                         label = { Text("Pesquisar artigo") },
                         singleLine = true
                     )
@@ -474,14 +541,14 @@ fun EncomendaFormScreen(
 
                     OutlinedTextField(
                         value = observacao,
-                        onValueChange = { observacao = it.uppercase(); mensagem = "" }, // MAIÚSCULAS AQUI
+                        onValueChange = { observacao = it.uppercase(); mensagem = "" },
                         label = { Text("Observação") },
                         modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4
                     )
                 }
             },
             confirmButton = { Button(onClick = { adicionarLinha() }) { Text("ADICIONAR") } },
-            dismissButton = { TextButton(onClick = { mostrarQuantidade = false; artigoSelecionado = null; mostrarArtigos = true }) { Text("CANCELAR") } } // Ao cancelar volta à lista!
+            dismissButton = { TextButton(onClick = { mostrarQuantidade = false; artigoSelecionado = null; mostrarArtigos = true }) { Text("CANCELAR") } }
         )
     }
 
@@ -513,7 +580,6 @@ private fun ArtigoSelecaoCard(artigo: Artigo, onSelecionar: () -> Unit, onFotoCl
 
 private fun gerarPdfEPartilharWhatsApp(context: Context, numeroEnc: String, cliente: Cliente, dataDocumento: String, linhas: List<LinhaEncomendaTemporaria>, total: Double) {
     try {
-        // LEITURA DOS DADOS DA LOJA VIA SHAREDPREFERENCES
         val prefs = context.getSharedPreferences("cmflores_prefs", Context.MODE_PRIVATE)
         val lojaNome = prefs.getString("loja_nome", "CM FLORES")?.takeIf { it.isNotBlank() } ?: "CM FLORES"
         val lojaMorada = prefs.getString("loja_morada", "") ?: ""
@@ -538,7 +604,6 @@ private fun gerarPdfEPartilharWhatsApp(context: Context, numeroEnc: String, clie
         fun desenharCabecalho(isPrimeiraPagina: Boolean, subtotalAnterior: Double = 0.0): Float {
             var y = 40f
             if (isPrimeiraPagina) {
-                // IMPRESSÃO DOS DADOS REAIS DA LOJA
                 paint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
                 paint.textSize = 16f
                 canvas.drawText(lojaNome.uppercase(), margemEsq, y, paint)
